@@ -30,14 +30,14 @@
 public struct Client: Responder {
     public let host: String
     public let port: Int
-    public let client: C7.StreamClient
+    public let connection: C7.Connection
     public let serializer: S4.RequestSerializer
     public let parser: S4.ResponseParser
 
     public init(host: String, port: Int, serializer: S4.RequestSerializer = RequestSerializer(), parser:S4.ResponseParser = ResponseParser()) throws {
         self.host = host
         self.port = port
-        self.client = try TCPStreamClient(address: host, port: port)
+        self.connection = try TCPConnection(to: URI(host: host, port: port))
         self.serializer = serializer
         self.parser = parser
     }
@@ -49,29 +49,28 @@ extension Client {
         request.host = "\(host):\(port)"
         request.userAgent = "Zewo"
 
-        if request.connection == nil {
+        if request.connection == [] {
             request.connection = "close"
         }
 
         return request
     }
 
-    public func respond(request: Request) throws -> Response {
+    public func respond(to request: Request) throws -> Response {
         let request = addHeaders(request)
-        let stream = try client.connect()
+        try self.connection.open(timingOut: .never)
+        try serializer.serialize(request, to: connection)
 
-        try serializer.serialize(request) { data in
-            try stream.send(data)
-        }
-
-        try stream.flush()
+        try connection.flush()
 
         while true {
-            let data = try stream.receive()
+            var data = Data()
+            for chunk in StreamSequence(for: connection) {
+                data.bytes.append(contentsOf: chunk.bytes)
+            }
             if let response = try parser.parse(data)  {
-
                 if let upgrade = request.upgrade {
-                    try upgrade(response, stream)
+                    try upgrade(response, connection)
                 }
 
                 return response
@@ -81,12 +80,12 @@ extension Client {
 
     public func send(request: Request, middleware: Middleware...) throws -> Response {
         let request = addHeaders(request)
-        return try middleware.intercept(self).respond(request)
+        return try middleware.chain(to: self).respond(to: request)
     }
 
     private func send(request: Request, middleware: [Middleware]) throws -> Response {
         let request = addHeaders(request)
-        return try middleware.intercept(self).respond(request)
+        return try middleware.chain(to: self).respond(to: request)
     }
 }
 
