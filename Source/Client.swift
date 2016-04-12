@@ -27,51 +27,64 @@
 @_exported import HTTPParser
 @_exported import HTTPSerializer
 
-public struct Client: Responder {
+public final class Client: S4.Client {
     public let host: String
     public let port: Int
-    public let client: C7.StreamClient
     public let serializer: S4.RequestSerializer
     public let parser: S4.ResponseParser
+    public let keepAlive: Bool
 
-    public init(host: String, port: Int, serializer: S4.RequestSerializer = RequestSerializer(), parser:S4.ResponseParser = ResponseParser()) throws {
+    public var connection: C7.Connection?
+
+    public init(connectingTo server: URI, serializingWith serializer: S4.RequestSerializer = RequestSerializer(), parsingWith parser: S4.ResponseParser = ResponseParser(), keepingAlive keepAlive: Bool) throws {
+        guard let host = server.host else {
+            throw TCPError.unknown(description: "Host was not defined in URI")
+        }
+
+        guard let port = server.port else {
+            throw TCPError.unknown(description: "Port was not defined in URI")
+        }
         self.host = host
         self.port = port
-        self.client = try TCPStreamClient(address: host, port: port)
         self.serializer = serializer
         self.parser = parser
+        self.keepAlive = keepAlive
+    }
+
+    public convenience init(connectingTo uri: URI) throws {
+        try self.init(connectingTo: uri, keepingAlive: true)
     }
 }
 
 extension Client {
-    private func addHeaders(request: Request) -> Request {
+    private func addHeaders(request: inout Request) {
         var request = request
         request.host = "\(host):\(port)"
         request.userAgent = "Zewo"
 
-        if request.connection == nil {
+        if request.connection.isEmpty {
             request.connection = "close"
         }
-
-        return request
     }
 
-    public func respond(request: Request) throws -> Response {
-        let request = addHeaders(request)
-        let stream = try client.connect()
+    public func respond(to request: Request) throws -> Response {
+        var request = request
+        addHeaders(&request)
 
-        try serializer.serialize(request) { data in
-            try stream.send(data)
-        }
+        let stream: Stream = try connection ?? TCPConnection(to: host, on: port)
 
-        try stream.flush()
+        try serializer.serialize(request, to: stream)
 
         while true {
-            let data = try stream.receive()
+            let data = try stream.receive(upTo: 1024)
             if let response = try parser.parse(data)  {
 
                 if let upgrade = request.upgrade {
                     try upgrade(response, stream)
+                }
+
+                if !keepAlive {
+                    connection = nil
                 }
 
                 return response
@@ -80,13 +93,15 @@ extension Client {
     }
 
     public func send(request: Request, middleware: Middleware...) throws -> Response {
-        let request = addHeaders(request)
-        return try middleware.intercept(self).respond(request)
+        var request = request
+        addHeaders(&request)
+        return try middleware.chain(to: self).respond(to: request)
     }
 
     private func send(request: Request, middleware: [Middleware]) throws -> Response {
-        let request = addHeaders(request)
-        return try middleware.intercept(self).respond(request)
+        var request = request
+        addHeaders(&request)
+        return try middleware.chain(to: self).respond(to: request)
     }
 }
 
@@ -161,3 +176,6 @@ extension Client {
         return try send(request, middleware: middleware)
     }
 }
+
+
+
