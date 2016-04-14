@@ -36,7 +36,7 @@ public final class Client: S4.Client {
 
     public var connection: C7.Connection?
 
-    public init(connectingTo server: URI, serializingWith serializer: S4.RequestSerializer = RequestSerializer(), parsingWith parser: S4.ResponseParser = ResponseParser(), keepingAlive keepAlive: Bool) throws {
+    public init(connectingTo server: URI, serializer: S4.RequestSerializer = RequestSerializer(), parser: S4.ResponseParser = ResponseParser(), keepAlive: Bool) throws {
         guard let host = server.host else {
             throw TCPError.unknown(description: "Host was not defined in URI")
         }
@@ -52,7 +52,7 @@ public final class Client: S4.Client {
     }
 
     public convenience init(connectingTo uri: URI) throws {
-        try self.init(connectingTo: uri, keepingAlive: true)
+        try self.init(connectingTo: uri, keepAlive: true)
     }
 }
 
