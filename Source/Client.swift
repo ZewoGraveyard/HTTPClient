@@ -71,8 +71,9 @@ extension Client {
         var request = request
         addHeaders(&request)
 
-        let stream: Stream = try connection ?? TCPConnection(to: host, on: port)
-
+        let stream: Connection = try connection ?? TCPConnection(to: host, on: port)
+        
+        try stream.open()
         try serializer.serialize(request, to: stream)
 
         while true {
