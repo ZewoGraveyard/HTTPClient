@@ -40,7 +40,7 @@ public final class Client: S4.Client {
 
     public var connection: C7.Connection?
 
-    public init(connectingTo uri: URI, serializingWith serializer: S4.RequestSerializer = RequestSerializer(), parsingWith parser: S4.ResponseParser = ResponseParser(), keepAlive: Bool) throws {
+    public init(connectingTo uri: URI, serializer: S4.RequestSerializer = RequestSerializer(), parser: S4.ResponseParser = ResponseParser(), keepAlive: Bool) throws {
         guard let host = uri.host else {
             throw ClientError.hostRequired
         }
