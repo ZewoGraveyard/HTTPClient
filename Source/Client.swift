@@ -23,9 +23,13 @@
 // SOFTWARE.
 
 @_exported import TCP
-@_exported import HTTP
 @_exported import HTTPParser
 @_exported import HTTPSerializer
+
+public enum ClientError: ErrorProtocol {
+    case hostRequired
+    case portRequired
+}
 
 public final class Client: S4.Client {
     public let host: String
@@ -36,13 +40,13 @@ public final class Client: S4.Client {
 
     public var connection: C7.Connection?
 
-    public init(connectingTo server: URI, serializer: S4.RequestSerializer = RequestSerializer(), parser: S4.ResponseParser = ResponseParser(), keepAlive: Bool) throws {
-        guard let host = server.host else {
-            throw TCPError.unknown(description: "Host was not defined in URI")
+    public init(connectingTo uri: URI, serializingWith serializer: S4.RequestSerializer = RequestSerializer(), parsingWith parser: S4.ResponseParser = ResponseParser(), keepAlive: Bool) throws {
+        guard let host = uri.host else {
+            throw ClientError.hostRequired
         }
 
-        guard let port = server.port else {
-            throw TCPError.unknown(description: "Port was not defined in URI")
+        guard let port = uri.port else {
+            throw ClientError.portRequired
         }
         self.host = host
         self.port = port
@@ -53,6 +57,10 @@ public final class Client: S4.Client {
 
     public convenience init(connectingTo uri: URI) throws {
         try self.init(connectingTo: uri, keepAlive: true)
+    }
+
+    public convenience init(connectingTo uri: String) throws {
+        try self.init(connectingTo: URI(uri), keepAlive: true)
     }
 }
 
@@ -71,21 +79,21 @@ extension Client {
         var request = request
         addHeaders(&request)
 
-        let stream: Connection = try connection ?? TCPConnection(to: host, on: port)
-        
-        try stream.open()
-        try serializer.serialize(request, to: stream)
+        let connection = try self.connection ?? TCPConnection(host: host, port: port)
+        try connection.open()
+
+        try serializer.serialize(request, to: connection)
 
         while true {
-            let data = try stream.receive(upTo: 1024)
+            let data = try connection.receive(upTo: 1024)
             if let response = try parser.parse(data)  {
 
                 if let upgrade = request.upgrade {
-                    try upgrade(response, stream)
+                    try upgrade(response, connection)
                 }
 
                 if !keepAlive {
-                    connection = nil
+                    self.connection = nil
                 }
 
                 return response
@@ -168,15 +176,59 @@ extension Client {
 
 extension Client {
     private func send(method: Method, uri: String, headers: Headers = [:], body: Data = [], middleware: [Middleware]) throws -> Response {
-        let request = try Request(method: method, uri: uri, headers: headers, body: body)
+        let request = try Request(method: method, uri: URI(uri), headers: headers, body: body)
         return try send(request, middleware: middleware)
     }
 
     private func send(method: Method, uri: String, headers: Headers = [:], body: DataConvertible, middleware: [Middleware]) throws -> Response {
-        let request = try Request(method: method, uri: uri, headers: headers, body: body)
+        let request = try Request(method: method, uri: URI(uri), headers: headers, body: body.data)
         return try send(request, middleware: middleware)
     }
 }
 
+extension Request {
+    public var connection: Header {
+        get {
+            return headers["Connection"] ?? []
+        }
+
+        set(connection) {
+            headers["Connection"] = connection
+        }
+    }
+
+    var host: String? {
+        get {
+            return headers["Host"].first
+        }
+
+        set(host) {
+            headers["Host"] = host.map({Header($0)}) ?? []
+        }
+    }
+
+    typealias Upgrade = (Response, Stream) throws -> Void
+
+    // Warning: The storage key has to be in sync with Zewo.HTTP's upgrade property.
+    var upgrade: Upgrade? {
+        get {
+            return storage["request-connection-upgrade"] as? Upgrade
+        }
+
+        set(upgrade) {
+            storage["request-connection-upgrade"] = upgrade
+        }
+    }
+
+    var userAgent: String? {
+        get {
+            return headers["User-Agent"].first
+        }
+        
+        set(userAgent) {
+            headers["User-Agent"] = userAgent.map({Header($0)}) ?? []
+        }
+    }
+}
 
 
