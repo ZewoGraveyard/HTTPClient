@@ -31,7 +31,7 @@ public enum ClientError: ErrorProtocol {
     case portRequired
 }
 
-public final class Client {
+public final class Client: Responder {
     public let host: String
     public let port: Int
     public let serializer: S4.RequestSerializer
@@ -40,7 +40,7 @@ public final class Client {
 
     public var connection: C7.Connection?
 
-    public init(uri: URI, serializer: S4.RequestSerializer = RequestSerializer(), parser: S4.ResponseParser = ResponseParser(), keepAlive: Bool) throws {
+    public init(uri: URI, serializer: S4.RequestSerializer = RequestSerializer(), parser: S4.ResponseParser = ResponseParser(), keepAlive: Bool = false) throws {
         guard let host = uri.host else {
             throw ClientError.hostRequired
         }
@@ -55,12 +55,8 @@ public final class Client {
         self.keepAlive = keepAlive
     }
 
-    public convenience init(uri: URI) throws {
-        try self.init(uri: uri, keepAlive: true)
-    }
-
-    public convenience init(uri: String) throws {
-        try self.init(uri: URI(uri), keepAlive: true)
+    public convenience init(uri: String, serializer: S4.RequestSerializer = RequestSerializer(), parser: S4.ResponseParser = ResponseParser(), keepAlive: Bool = false) throws {
+        try self.init(uri: URI(uri), serializer: serializer, parser: parser, keepAlive: keepAlive)
     }
 }
 
@@ -230,5 +226,3 @@ extension Request {
         }
     }
 }
-
-
