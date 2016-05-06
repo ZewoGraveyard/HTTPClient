@@ -7,6 +7,15 @@
 [![Slack][slack-badge]][slack-url]
 [![Travis][travis-badge]][travis-url]
 
+## Usage
+
+```swift
+import HTTPClient
+
+let client = try Client(uri: "http://google.com")
+let response = try client.get("/")
+```
+
 ## Installation
 
 ```swift
