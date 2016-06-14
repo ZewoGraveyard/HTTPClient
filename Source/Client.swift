@@ -65,7 +65,7 @@ extension Client {
         request.host = "\(host):\(port)"
         request.userAgent = "Zewo"
 
-        if request.connection.isEmpty {
+        if request.connection == nil {
             request.connection = "close"
         }
     }
@@ -182,9 +182,9 @@ extension Client {
 }
 
 extension Request {
-    public var connection: Header {
+    public var connection: String? {
         get {
-            return headers["Connection"] ?? []
+            return headers["Connection"]
         }
 
         set(connection) {
@@ -194,11 +194,11 @@ extension Request {
 
     var host: String? {
         get {
-            return headers["Host"].first
+            return headers["Host"]
         }
 
         set(host) {
-            headers["Host"] = host.map({Header($0)}) ?? []
+            headers["Host"] = host
         }
     }
 
@@ -217,11 +217,11 @@ extension Request {
 
     var userAgent: String? {
         get {
-            return headers["User-Agent"].first
+            return headers["User-Agent"]
         }
 
         set(userAgent) {
-            headers["User-Agent"] = userAgent.map({Header($0)}) ?? []
+            headers["User-Agent"] = userAgent
         }
     }
 }
