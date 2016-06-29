@@ -41,13 +41,18 @@ public final class Client: Responder {
     public var connection: C7.Connection?
 
     public init(uri: URI, serializer: S4.RequestSerializer = RequestSerializer(), parser: S4.ResponseParser = ResponseParser(), keepAlive: Bool = false) throws {
+
         guard let host = uri.host else {
             throw ClientError.hostRequired
         }
 
-        guard let port = uri.port else {
-            throw ClientError.portRequired
+        let port: Int
+        switch uri.port {
+        case let p?: port = p
+        case nil where uri.scheme == "http": port = 80
+        case nil: throw ClientError.portRequired
         }
+
         self.host = host
         self.port = port
         self.serializer = serializer
@@ -102,7 +107,7 @@ extension Client {
         return try middleware.chain(to: self).respond(to: request)
     }
 
-    private func send(_ request: Request, middleware: [Middleware]) throws -> Response {
+    public func send(_ request: Request, middleware: [Middleware]) throws -> Response {
         var request = request
         addHeaders(&request)
         return try middleware.chain(to: self).respond(to: request)
@@ -110,74 +115,28 @@ extension Client {
 }
 
 extension Client {
-    public func send(method: Method, uri: String, headers: Headers = [:], body: Data = [], middleware: Middleware...) throws -> Response {
-        return try send(method: method, uri: uri, headers: headers, body: body, middleware: middleware)
-    }
-
-    public func send(method: Method, uri: String, headers: Headers = [:], body: DataConvertible, middleware: Middleware...) throws -> Response {
-        return try send(method: method, uri: uri, headers: headers, body: body, middleware: middleware)
-    }
-}
-
-extension Client {
-    public func get(_ uri: String, headers: Headers = [:], body: Data = [], middleware: Middleware...) throws -> Response {
-        return try send(method: .get, uri: uri, headers: headers, body: body, middleware: middleware)
-    }
-
-    public func get(_ uri: String, headers: Headers = [:], body: DataConvertible, middleware: Middleware...) throws -> Response {
-        return try send(method: .get, uri: uri, headers: headers, body: body, middleware: middleware)
-    }
-}
-
-extension Client {
-    public func post(_ uri: String, headers: Headers = [:], body: Data = [], middleware: Middleware...) throws -> Response {
-        return try send(method: .post, uri: uri, headers: headers, body: body, middleware: middleware)
-    }
-
-    public func post(_ uri: String, headers: Headers = [:], body: DataConvertible, middleware: Middleware...) throws -> Response {
-        return try send(method: .post, uri: uri, headers: headers, body: body, middleware: middleware)
-    }
-}
-
-extension Client {
-    public func put(_ uri: String, headers: Headers = [:], body: Data = [], middleware: Middleware...) throws -> Response {
-        return try send(method: .put, uri: uri, headers: headers, body: body, middleware: middleware)
-    }
-
-    public func put(_ uri: String, headers: Headers = [:], body: DataConvertible, middleware: Middleware...) throws -> Response {
-        return try send(method: .put, uri: uri, headers: headers, body: body, middleware: middleware)
-    }
-}
-
-extension Client {
-    public func patch(_ uri: String, headers: Headers = [:], body: Data = [], middleware: Middleware...) throws -> Response {
-        return try send(method: .patch, uri: uri, headers: headers, body: body, middleware: middleware)
-    }
-
-    public func patch(_ uri: String, headers: Headers = [:], body: DataConvertible, middleware: Middleware...) throws -> Response {
-        return try send(method: .patch, uri: uri, headers: headers, body: body, middleware: middleware)
-    }
-}
-
-extension Client {
-    public func delete(_ uri: String, headers: Headers = [:], body: Data = [], middleware: Middleware...) throws -> Response {
-        return try send(method: .delete, uri: uri, headers: headers, body: body, middleware: middleware)
-    }
-
-    public func delete(_ uri: String, headers: Headers = [:], body: DataConvertible, middleware: Middleware...) throws -> Response {
-        return try send(method: .delete, uri: uri, headers: headers, body: body, middleware: middleware)
-    }
-}
-
-extension Client {
-    private func send(method: Method, uri: String, headers: Headers = [:], body: Data = [], middleware: [Middleware]) throws -> Response {
+    public func send(method: Method, uri: String, headers: Headers = [:], body: Data = [], middleware: [Middleware]) throws -> Response {
         let request = try Request(method: method, uri: URI(uri), headers: headers, body: body)
         return try send(request, middleware: middleware)
     }
 
-    private func send(method: Method, uri: String, headers: Headers = [:], body: DataConvertible, middleware: [Middleware]) throws -> Response {
+    public func send(method: Method, uri: String, headers: Headers = [:], body: DataConvertible, middleware: [Middleware]) throws -> Response {
         let request = try Request(method: method, uri: URI(uri), headers: headers, body: body.data)
         return try send(request, middleware: middleware)
+    }
+
+    public static func send(method: Method, uri: String, headers: Headers = [:], body: Data = [], middleware: [Middleware]) throws -> Response {
+        let uri = try URI(uri)
+        let path = uri.path ?? ""
+
+        let client = try Client(uri: uri)
+        let request = Request(method: method, uri: URI(path: path), headers: headers, body: body)
+
+        return try client.send(request, middleware: middleware)
+    }
+
+    public static func send(method: Method, uri: String, headers: Headers = [:], body: DataConvertible, middleware: [Middleware]) throws -> Response {
+        return try send(method: method, uri: uri, headers: headers, body: body.data, middleware: middleware)
     }
 }
 
