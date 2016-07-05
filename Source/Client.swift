@@ -34,13 +34,13 @@ public enum ClientError: ErrorProtocol {
 public final class Client: Responder {
     public let host: String
     public let port: Int
-    public let serializer: S4.RequestSerializer
-    public let parser: S4.ResponseParser
+    public let serializer: S4.RequestSerializer.Type
+    public let parser: S4.ResponseParser.Type
     public let keepAlive: Bool
 
     public var connection: C7.Connection?
 
-    public init(uri: URI, serializer: S4.RequestSerializer = RequestSerializer(), parser: S4.ResponseParser = ResponseParser(), keepAlive: Bool = false) throws {
+    public init(uri: URI, serializer: S4.RequestSerializer.Type = RequestSerializer.self, parser: S4.ResponseParser.Type = ResponseParser.self, keepAlive: Bool = false) throws {
         guard let host = uri.host else {
             throw ClientError.hostRequired
         }
@@ -55,7 +55,7 @@ public final class Client: Responder {
         self.keepAlive = keepAlive
     }
 
-    public convenience init(uri: String, serializer: S4.RequestSerializer = RequestSerializer(), parser: S4.ResponseParser = ResponseParser(), keepAlive: Bool = false) throws {
+    public convenience init(uri: String, serializer: S4.RequestSerializer.Type = RequestSerializer.self, parser: S4.ResponseParser.Type = ResponseParser.self, keepAlive: Bool = false) throws {
         try self.init(uri: URI(uri), serializer: serializer, parser: parser, keepAlive: keepAlive)
     }
 }
@@ -65,7 +65,7 @@ extension Client {
         request.host = "\(host):\(port)"
         request.userAgent = "Zewo"
 
-        if request.connection.isEmpty {
+        if request.connection == nil {
             request.connection = "close"
         }
     }
@@ -77,23 +77,21 @@ extension Client {
         let connection = try self.connection ?? TCPConnection(host: host, port: port)
         try connection.open()
 
-        try serializer.serialize(request, to: connection)
+        let serializer = self.serializer.init(stream: connection)
+        try serializer.serialize(request)
 
-        while true {
-            let data = try connection.receive(upTo: 1024)
-            if let response = try parser.parse(data)  {
+        let parser = self.parser.init(stream: connection)
+        let response = try parser.parse()
 
-                if let upgrade = request.didUpgrade {
-                    try upgrade(response, connection)
-                }
-
-                if !keepAlive {
-                    self.connection = nil
-                }
-
-                return response
-            }
+        if let upgrade = request.didUpgrade {
+            try upgrade(response, connection)
         }
+
+        if !keepAlive {
+            self.connection = nil
+        }
+
+        return response
     }
 
     public func send(_ request: Request, middleware: Middleware...) throws -> Response {
@@ -182,9 +180,9 @@ extension Client {
 }
 
 extension Request {
-    public var connection: Header {
+    public var connection: String? {
         get {
-            return headers["Connection"] ?? []
+            return headers["Connection"]
         }
 
         set(connection) {
@@ -194,11 +192,11 @@ extension Request {
 
     var host: String? {
         get {
-            return headers["Host"].first
+            return headers["Host"]
         }
 
         set(host) {
-            headers["Host"] = host.map({Header($0)}) ?? []
+            headers["Host"] = host
         }
     }
 
@@ -217,11 +215,25 @@ extension Request {
 
     var userAgent: String? {
         get {
-            return headers["User-Agent"].first
+            return headers["User-Agent"]
         }
 
         set(userAgent) {
-            headers["User-Agent"] = userAgent.map({Header($0)}) ?? []
+            headers["User-Agent"] = userAgent
         }
+    }
+}
+
+extension Request {
+    public init(method: Method = .get, uri: URI = URI(path: "/"), headers: Headers = [:], body: Data = []) {
+        self.init(
+            method: method,
+            uri: uri,
+            version: Version(major: 1, minor: 1),
+            headers: headers,
+            body: .buffer(body)
+        )
+
+        self.headers["Content-Length"] = body.count.description
     }
 }
