@@ -81,24 +81,43 @@ extension Client {
         let stream = try getStream()
         let serializer = getSerializer(stream: stream)
         let parser = getParser()
+        var responseClosed = false
 
         self.stream = stream
         self.serializer = serializer
         self.parser = parser
+        
 
         let requestDeadline = now() + requestTimeout
 
-        do {
             // TODO: Add deadline to serializer
             // TODO: Deal with multiple responses
 
             // send the request down the stream
             try serializer.serialize(request, deadline: requestDeadline)
 
+            var chunksCount = 0
+            var chunk: Buffer?
             while !stream.closed {
-                let chunk = try stream.read(upTo: bufferSize, deadline: requestDeadline)
+                do {
+                    chunk = try stream.read(upTo: bufferSize, deadline: requestDeadline)
+                    chunksCount += 1
+                }
+                catch let error as StreamError {
+                    if chunksCount == 0 {
+                        self.stream = nil
+                        throw error
+                    } else {
+                        // getting response when the server closed connection
+                        responseClosed = true
+                    }
+                }
 
-                guard let message = try parser.parse(chunk).first else {
+                guard let chunk = chunk else {
+                   throw StreamError.closedStream
+                }
+                
+                guard let message = try parser.parse(chunk, done: responseClosed).first else {
                     // if theres no message, loop and read more
                     continue
                 }
@@ -129,10 +148,6 @@ extension Client {
             // stream closed before we got a response out of it
             throw StreamError.closedStream
 
-        } catch let error as StreamError {
-            self.stream = nil
-            throw error
-        }
     }
 
     private func addHeaders(to request: inout Request) {
