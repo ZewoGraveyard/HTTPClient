@@ -152,7 +152,11 @@ extension Client {
     }
 
     private func addHeaders(to request: inout Request) {
-        request.host = request.host ?? "\(host):\(port)"
+        request.host = request.host ?? host
+        
+        if port != 80 && port != 443 {
+            request.host = request.host ?? "\(host):\(port)"
+        }
 
         if addUserAgent {
             request.userAgent = request.userAgent ?? "Zewo"
